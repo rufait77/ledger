@@ -1,0 +1,6 @@
+# The skill rewrites these generated files with LF on every machine. Checking them out as LF keeps
+# Windows (core.autocrlf=true) from showing an unchanged index as modified after a rebuild.
+# Nothing else is listed on purpose: originals in archive sources/ stay exactly as they arrived.
+PROJECTS.md text eol=lf
+INDEX.md text eol=lf
+DECISIONS.md text eol=lf

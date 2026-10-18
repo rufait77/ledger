@@ -1,0 +1,6 @@
+.DS_Store
+node_modules/
+.ledger.local
+runs/*/.codex-output.md
+projects/*/runs/*/.codex-output.md
+archive/.staging/
