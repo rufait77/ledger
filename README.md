@@ -126,11 +126,11 @@ the template and refuses to push anything back to it. To make sure ledgers only 
 company GitHub accounts, add a `.ledger-team` file to your template:
 
 ```json
-{ "accountEmailMustMatch": ["example.com"] }
+{ "accountEmailMustMatch": ["example.com"], "accountEmails": ["partner@elsewhere.org"] }
 ```
 
-`/ledger setup` then verifies that the signed-in account has a verified email at such a domain
-before it creates or links a personal repo (it asks once for
+`/ledger setup` then verifies that the signed-in account has a verified email at such a domain,
+or one of the listed addresses, before it creates or links a personal repo (it asks once for
 `gh auth refresh -h github.com -s user:email`, which lets it read the verified emails), and
 `sync` refuses any origin owned by another account.
 

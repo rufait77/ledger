@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { extractors, scriptsDir } from './archive.mjs';
 import { writeIndexes } from './index.mjs';
-import { git, gitState, isGenerated, isTemplateRemote, localState, normalizeRemote as normalize, run, setLocalState, teamPolicy, templateRemote } from './repo.mjs';
+import { emailAllowed, git, gitState, isGenerated, isTemplateRemote, localState, normalizeRemote as normalize, run, setLocalState, teamPolicy, templateRemote } from './repo.mjs';
 
 const REPO_NAME = 'ledger';
 export const ROOT_FOLDERS = ['research/inbox', 'archive/inbox', 'memory/preferences', 'memory/facts', 'memory/lessons', 'projects'];
@@ -136,7 +136,7 @@ export function onboard(root, opts = {}) {
 	const githubTarget = !opts.target || /github\.com/i.test(String(opts.target));
 	let accountOk = true;
 	if (policy && githubTarget) {
-		const wanted = policy.accountEmailMustMatch.join(', ');
+		const wanted = [...policy.accountEmailMustMatch.map((w) => `*${w}*`), ...(policy.accountEmails.length ? ['or an address listed in .ledger-team'] : [])].join(', ');
 		if (!signedIn || !login) {
 			accountOk = false;
 			add('company account verified', false, 'not signed in', `Sign in to GitHub with the account registered with your company email (${wanted}), then run /ledger setup again.`);
@@ -151,7 +151,7 @@ export function onboard(root, opts = {}) {
 				add('company account verified', false, (em.stderr || em.stdout || 'gh api user/emails failed').slice(0, 200), 'Check the GitHub sign-in (gh auth status) and run /ledger setup again.');
 			} else {
 				const emails = em.stdout.split(',').map((e) => e.trim()).filter(Boolean);
-				const found = emails.find((e) => policy.accountEmailMustMatch.some((m) => (e.split('@')[1] || '').toLowerCase().includes(m)));
+				const found = emails.find((e) => emailAllowed(policy, e));
 				accountOk = Boolean(found);
 				add(
 					'company account verified',

@@ -64,11 +64,26 @@ export function setLocalState(root, patch) {
 	writeJson(path.join(root, LOCAL), { ...localState(root), ...patch });
 }
 
-/** The team policy shipped by the template: `{ accountEmailMustMatch: ["example", …] }` (email domain must contain one), or null when there is none. */
+/**
+ * The team policy shipped by the template, or null when there is none:
+ * `{ accountEmailMustMatch: ["example", …], accountEmails: ["name@partner.com", …] }`.
+ * A verified email passes when its domain contains one of the words, or when the whole address is listed.
+ */
 export function teamPolicy(root) {
 	const p = readJson(path.join(root, TEAM), null);
-	const list = p && Array.isArray(p.accountEmailMustMatch) ? p.accountEmailMustMatch.map((s) => String(s).trim().toLowerCase()).filter(Boolean) : [];
-	return list.length ? { accountEmailMustMatch: list } : null;
+	const norm = (arr) => (Array.isArray(arr) ? arr.map((s) => String(s).trim().toLowerCase()).filter(Boolean) : []);
+	const words = norm(p && p.accountEmailMustMatch);
+	const emails = norm(p && p.accountEmails);
+	return words.length || emails.length ? { accountEmailMustMatch: words, accountEmails: emails } : null;
+}
+
+/** Does this verified email satisfy the team policy? */
+export function emailAllowed(policy, email) {
+	const e = String(email || '').trim().toLowerCase();
+	if (!e) return false;
+	if (policy.accountEmails.includes(e)) return true;
+	const domain = e.split('@')[1] || '';
+	return policy.accountEmailMustMatch.some((w) => domain.includes(w));
 }
 
 /** The GitHub owner of a remote URL (lower-cased), or null for anything that is not on github.com (local test remotes, other hosts). */
