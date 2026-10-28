@@ -1,0 +1,12 @@
+{
+  "name": "ledger-scripts",
+  "private": true,
+  "description": "Dependencies of the /ledger skill's scripts: text extraction for the archive (PDF: pdfjs-dist, Word: mammoth, Excel: SheetJS from its own CDN, zip: fflate). Installed by `/ledger setup`; node_modules is gitignored.",
+  "type": "module",
+  "dependencies": {
+    "fflate": "0.8.2",
+    "mammoth": "1.11.0",
+    "pdfjs-dist": "4.10.38",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  }
+}

@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { extractors, scriptsDir } from './archive.mjs';
 import { writeIndexes } from './index.mjs';
-import { git, gitState, isGenerated, isTemplateRemote, normalizeRemote as normalize, run, templateRemote } from './repo.mjs';
+import { git, gitState, isGenerated, isTemplateRemote, localState, normalizeRemote as normalize, run, setLocalState, teamPolicy, templateRemote } from './repo.mjs';
 
 const REPO_NAME = 'ledger';
 export const ROOT_FOLDERS = ['research/inbox', 'archive/inbox', 'memory/preferences', 'memory/facts', 'memory/lessons', 'projects'];
@@ -128,6 +128,43 @@ export function onboard(root, opts = {}) {
 	const author = `${git(root, ['config', 'user.name']).stdout} <${git(root, ['config', 'user.email']).stdout}>`;
 	add('git author set', !/^ <>$/.test(author), author, 'Sign in to GitHub and run /ledger setup again.');
 
+	// --- company account (team policy) ---------------------------------------------------------
+	// With a .ledger-team file, a ledger on GitHub may only be created or linked under an account that
+	// has a verified email at one of the company's domains. Checked before any repo is touched; the
+	// verified account is recorded in .ledger.local, and sync refuses any other origin owner.
+	const policy = teamPolicy(root);
+	const githubTarget = !opts.target || /github\.com/i.test(String(opts.target));
+	let accountOk = true;
+	if (policy && githubTarget) {
+		const wanted = policy.accountEmailMustMatch.join(', ');
+		if (!signedIn || !login) {
+			accountOk = false;
+			add('company account verified', false, 'not signed in', `Sign in to GitHub with the account registered with your company email (${wanted}), then run /ledger setup again.`);
+		} else {
+			const em = run('gh', ['api', 'user/emails', '--jq', '[.[] | select(.verified) | .email] | join(",")'], { timeoutMs: 30000 });
+			if (!em.ok && /scope/i.test(`${em.stderr}\n${em.stdout}`)) {
+				accountOk = false;
+				add('company account verified', false, `@${login}: the GitHub sign-in cannot show its verified emails yet`, 'In Terminal: gh auth refresh -h github.com -s user:email  (approve in the browser, then say done)');
+				yourSteps.push('gh auth refresh -h github.com -s user:email');
+			} else if (!em.ok) {
+				accountOk = false;
+				add('company account verified', false, (em.stderr || em.stdout || 'gh api user/emails failed').slice(0, 200), 'Check the GitHub sign-in (gh auth status) and run /ledger setup again.');
+			} else {
+				const emails = em.stdout.split(',').map((e) => e.trim()).filter(Boolean);
+				const found = emails.find((e) => policy.accountEmailMustMatch.some((m) => (e.split('@')[1] || '').toLowerCase().includes(m)));
+				accountOk = Boolean(found);
+				add(
+					'company account verified',
+					accountOk,
+					found ? `@${login} · ${found}` : `@${login} has no verified email at ${wanted} (verified: ${emails.join(', ') || 'none'})`,
+					`A ledger may only live under a GitHub account registered with a company email (${wanted}). In Terminal: gh auth logout, then gh auth login with that account, then /ledger setup again. Nothing was created.`,
+				);
+				setLocalState(root, { account: accountOk ? { login, email: found, verifiedAt: new Date().toISOString() } : null });
+				if (accountOk) actions.push(`verified @${login} as a company account (${found})`);
+			}
+		}
+	}
+
 	// --- remotes and the personal repo ----------------------------------------------------------
 	const state = gitState(root);
 	add('inside a git repo', state.isRepo, state.branch || '', 'This folder is not a git repository; run `init` here to make it a ledger, or open Claude Code in your ledger folder.');
@@ -135,8 +172,9 @@ export function onboard(root, opts = {}) {
 	const repoName = opts.repoName || REPO_NAME;
 	const target = opts.target || (login ? `https://github.com/${login}/${repoName}.git` : null);
 	let repoOutcome = 'unchanged';
+	if (!accountOk) repoOutcome = 'account-not-verified';
 
-	if (state.isRepo && target) {
+	if (state.isRepo && target && accountOk) {
 		if (state.branch !== 'main') {
 			git(root, ['branch', '-M', 'main']);
 			actions.push(`renamed branch ${state.branch} → main`);
@@ -155,6 +193,11 @@ export function onboard(root, opts = {}) {
 		if (template && !git(root, ['remote', 'get-url', 'template']).ok) {
 			git(root, ['remote', 'add', 'template', template]);
 			actions.push(`added remote "template" → ${template} (read-only source of skill updates)`);
+		}
+		// The template is pull-only: give its remote a push URL that cannot work, so even a hand-typed `git push template` fails.
+		if (template && git(root, ['remote', 'get-url', 'template']).ok && git(root, ['remote', 'get-url', '--push', 'template']).stdout !== 'DISABLED') {
+			git(root, ['remote', 'set-url', '--push', 'template', 'DISABLED']);
+			actions.push('locked the template remote to pull only (its push URL is disabled)');
 		}
 
 		// Does the personal repo exist, and is it a ledger?
@@ -283,5 +326,5 @@ export function onboard(root, opts = {}) {
 	const idx = writeIndexes(root);
 
 	const ready = checks.filter((c) => !c.optional).every((c) => c.ok);
-	return { ok: true, root, login, repo: login ? `${login}/${repoName}` : null, repoOutcome, template, checks, actions, yourSteps, indexes: idx, ready };
+	return { ok: true, root, login, repo: login ? `${login}/${repoName}` : null, repoOutcome, template, policy, account: localState(root).account || null, checks, actions, yourSteps, indexes: idx, ready };
 }

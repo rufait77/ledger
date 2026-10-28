@@ -69,6 +69,16 @@ function fail(error, extra = {}) {
 	process.exit(1);
 }
 
+/** The document a command takes: stdin, or `--file <path>` for shells without a heredoc (PowerShell). */
+function inputText(opts) {
+	if (opts.file && opts.file !== true) {
+		const p = path.resolve(String(opts.file));
+		if (!fs.existsSync(p)) fail(`No file ${opts.file}.`);
+		return fs.readFileSync(p, 'utf8').replace(/^﻿/, '');
+	}
+	return readStdin();
+}
+
 // ---------------------------------------------------------------- projects
 
 function projectSummary(root, p) {
@@ -239,8 +249,8 @@ function cmdInbox(root) {
 }
 
 function cmdStart(root, opts) {
-	const problem = readStdin().trim();
-	if (!problem) fail('Pass the problem statement on stdin.');
+	const problem = inputText(opts).trim();
+	if (!problem) fail('Pass the problem statement on stdin (or --file <path>).');
 	if (!opts.slug) fail('Pass --slug "three to six words naming the subject".');
 	const project = requireProject(root, opts);
 	const p = paths(root, project);
@@ -281,12 +291,18 @@ function cmdContext(root, opts) {
 	print({ ok: true, run: r ? r.id : null, project, ...ctx, elsewhere, researchFiles: r ? r.meta.research : [] });
 }
 
-function codexReview(root, specRel, outFile, { model, effort }) {
-	const prompt =
+/** The reviewer's brief. The same text goes to the Codex CLI (Claude Code edition) or to a reviewer subagent (`review --prompt`). */
+function reviewPrompt(specRel) {
+	return (
 		`You are reviewing a product/engineering specification before it is handed off. Read the file ${specRel} in this repository. ` +
 		'Reply with NUMBERED FINDINGS ONLY, each as: "N. <short title> — severity: high|medium|low — what is wrong or missing — what to change". ' +
 		'Cover: contradictions, missing scope boundaries, unverified assumptions, risks without mitigations, and anything an engineer could not act on. ' +
-		'Do not rewrite the spec, do not add praise, do not add a summary.';
+		'Do not rewrite the spec, do not add praise, do not add a summary.'
+	);
+}
+
+function codexReview(root, specRel, outFile, { model, effort }) {
+	const prompt = reviewPrompt(specRel);
 	const args = ['exec', '--sandbox', 'read-only', '--skip-git-repo-check', '-C', root, '--output-last-message', outFile];
 	if (model) args.push('-m', model);
 	if (effort) args.push('-c', `model_reasoning_effort="${effort}"`);
@@ -312,12 +328,21 @@ function cmdReview(root, opts) {
 	const model = opts.model === 'default' ? null : opts.model || defaults.model;
 	const effort = opts.effort === 'default' ? null : opts.effort || defaults.effort;
 	if (effort && !EFFORT_LEVELS.includes(effort)) fail(`--effort must be one of ${EFFORT_LEVELS.join(', ')} (or "default").`);
+	if (opts.prompt) {
+		// No reviewer is run here: the agent hands this prompt to a reviewer of its own (a fresh-context subagent)
+		// and imports the reply with --findings. Used by the Codex edition, where a nested Codex cannot run.
+		return print({
+			ok: true, run: r.id, project: r.project, stage: r.meta.stage, specFile: rel(root, spec), prompt: reviewPrompt(rel(root, spec)),
+			next: `review --run ${r.id} --findings <file holding the reviewer's reply> --reviewer <who reviewed>`,
+		});
+	}
 	let source;
 	if (opts.findings) {
 		const src = path.resolve(root, String(opts.findings));
 		if (!fs.existsSync(src)) fail(`No file ${opts.findings}.`);
-		fs.writeFileSync(findings, `# Review findings (pasted from Codex)\n\n${fs.readFileSync(src, 'utf8').trim()}\n`);
-		source = 'pasted';
+		const reviewer = opts.reviewer && opts.reviewer !== true ? String(opts.reviewer) : null;
+		fs.writeFileSync(findings, `# Review findings (${reviewer ? `from ${reviewer}` : 'pasted from Codex'}, ${today()})\n\n${fs.readFileSync(src, 'utf8').trim()}\n`);
+		source = reviewer || 'pasted';
 	} else {
 		const tmp = path.join(r.dir, '.codex-output.md');
 		const res = codexReview(root, rel(root, spec), tmp, { model, effort });
@@ -416,7 +441,7 @@ function validateHandoff(text) {
 function cmdFinalize(root, opts) {
 	const r = findRun(root, opts.run);
 	if (!r) fail(`No run ${opts.run}.`);
-	const text = readStdin();
+	const text = inputText(opts);
 	const { data, body } = validateHandoff(text);
 	const p = paths(root, r.project);
 	fs.mkdirSync(p.handoffs, { recursive: true });
@@ -452,8 +477,8 @@ function cmdFinalize(root, opts) {
 }
 
 function cmdMemory(root, opts) {
-	const body = readStdin().trim();
-	if (!body) fail('Pass the memory text on stdin.');
+	const body = inputText(opts).trim();
+	if (!body) fail('Pass the memory text on stdin (or --file <path>).');
 	if (!['preferences', 'facts', 'lessons'].includes(opts.kind)) fail('--kind must be preferences, facts or lessons.');
 	if (!opts.name) fail('Pass --name "short name".');
 	const project = opts.kind === 'preferences' || opts.global ? null : pickProject(root, opts);
@@ -585,8 +610,8 @@ async function cmdArchive(root, opts) {
 		process.exit(res.ok ? 0 : 1);
 	}
 	if (sub === 'add') {
-		const text = readStdin();
-		if (!text.trim()) fail('Pass the digest (header + body) on stdin.');
+		const text = inputText(opts);
+		if (!text.trim()) fail('Pass the digest (header + body) on stdin (or --file <path>).');
 		const project = sort ? null : requireProject(root, opts);
 		const res = addEntry(root, opts.name, text, { project, sort });
 		print(res);

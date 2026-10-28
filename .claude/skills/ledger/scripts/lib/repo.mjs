@@ -6,7 +6,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export const MARKER = '.ledger';
-export const LOCAL = '.ledger.local'; // per-machine state (selected project); gitignored
+export const LOCAL = '.ledger.local'; // per-machine state (selected project, verified account); gitignored
+export const TEAM = '.ledger-team'; // template-owned team policy (which email domains may hold a ledger); absent = no rule
 export const PROJECTS_DIR = 'projects';
 const GENERATED_FILE = /(^|\/)(PROJECTS\.md|handoffs\/INDEX\.md|memory\/INDEX\.md|memory\/DECISIONS\.md|archive\/INDEX\.md)$/;
 
@@ -53,6 +54,53 @@ export function paths(root, project = null) {
 
 export function rel(root, p) {
 	return path.relative(root, p).split(path.sep).join('/');
+}
+
+/** Per-machine state (.ledger.local): selected project, the verified company account. */
+export function localState(root) {
+	return readJson(path.join(root, LOCAL), {});
+}
+export function setLocalState(root, patch) {
+	writeJson(path.join(root, LOCAL), { ...localState(root), ...patch });
+}
+
+/** The team policy shipped by the template: `{ accountEmailMustMatch: ["example", …] }` (email domain must contain one), or null when there is none. */
+export function teamPolicy(root) {
+	const p = readJson(path.join(root, TEAM), null);
+	const list = p && Array.isArray(p.accountEmailMustMatch) ? p.accountEmailMustMatch.map((s) => String(s).trim().toLowerCase()).filter(Boolean) : [];
+	return list.length ? { accountEmailMustMatch: list } : null;
+}
+
+/** The GitHub owner of a remote URL (lower-cased), or null for anything that is not on github.com (local test remotes, other hosts). */
+export function remoteOwner(url) {
+	const m = normalizeRemote(url).match(/^https:\/\/github\.com\/([^/]+)\//);
+	return m ? m[1] : null;
+}
+
+/**
+ * Why a sync must not touch this origin, or null. With a team policy, a ledger on GitHub may only be
+ * pushed to the account that `setup` verified on this machine as a company account.
+ */
+export function accountGuard(root, remote) {
+	const policy = teamPolicy(root);
+	const owner = remoteOwner(remote);
+	if (!policy || !owner) return null;
+	const account = localState(root).account;
+	if (!account || !account.login) {
+		return {
+			ok: false,
+			code: 'account-not-verified',
+			error: 'This ledger syncs to GitHub, but the account that holds it has not been verified as a company account on this machine. Run /ledger setup. Nothing was pushed.',
+		};
+	}
+	if (String(account.login).toLowerCase() !== owner) {
+		return {
+			ok: false,
+			code: 'origin-owner-mismatch',
+			error: `origin belongs to ${owner}, but the verified company account on this machine is ${account.login}. Run /ledger setup; it re-points origin. Nothing was pushed.`,
+		};
+	}
+	return null;
 }
 
 export function today() {
@@ -253,6 +301,8 @@ export function sync(root, message, regenerate) {
 			fix: rehomeCommands(),
 		};
 	}
+	const guard = accountGuard(root, state.remote);
+	if (guard) return guard;
 	const steps = [];
 	if (state.dirtyFiles > 0) {
 		git(root, ['add', '-A']);

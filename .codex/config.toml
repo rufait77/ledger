@@ -1,0 +1,11 @@
+# Codex settings for this ledger (read once you have trusted the folder in Codex).
+# The skill runs git, gh and node from inside Codex's sandbox: pulls and pushes need the network.
+
+sandbox_mode = "workspace-write"
+approval_policy = "on-request"
+
+[sandbox_workspace_write]
+network_access = true
+
+[features]
+multi_agent = true

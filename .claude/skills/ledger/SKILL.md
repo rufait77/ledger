@@ -478,8 +478,9 @@ memory and sync to a private repo of yours." On yes, `init --template https://gi
 (marker, folders, ignore rules, a git repo if there is none), then `setup` again.
 
 What it does, in order: checks Node and git; installs the GitHub CLI if missing (Homebrew on
-macOS, winget on Windows); reads the signed-in GitHub identity (`gh api user`); sets the commit
-author for this repo from it; makes `origin` point at **`<login>/ledger`, the user's private
+macOS, winget on Windows); reads the signed-in GitHub identity (`gh api user`); with `.ledger-team`,
+verifies a company email on the account (else `repoOutcome: account-not-verified`, nothing is
+created); sets the commit author for this repo from it; makes `origin` point at **`<login>/ledger`, the user's private
 personal repo**, re-pointing it if the folder was cloned from the shared template or any org;
 creates that personal repo if it doesn't exist and pushes, or reconciles with it if it does
 (takes its commits, replays local ones on top, pushes); adds a read-only `template` remote and
@@ -490,8 +491,9 @@ skill's scripts, setup restarts once with the new version before the installs, f
 indexes, so the old code never finishes the job; the result is the restarted run's, and its
 `actions` say so.
 
-The only things it can't do are the two browser sign-ins. They come back in `yourSteps`:
-`gh auth login` and/or `codex login`. If `yourSteps` is non-empty:
+The only things it can't do are the browser sign-ins. They come back in `yourSteps`: `gh auth login`,
+`gh auth refresh -h github.com -s user:email` (lets it see the verified emails) and/or `codex login`.
+If `yourSteps` is non-empty:
 1. Tell the user to run exactly those commands **in the Terminal app** (not here), one at a time,
    and to come back and say "done". Explain in one line why: the sign-in opens a browser and
    needs an interactive terminal.
@@ -502,7 +504,7 @@ If the result's `legacy.any` is true, ask the migration question (Projects secti
 
 ```
 ledger - SETUP on this machine
-GitHub:     @<login> · personal repo <login>/ledger
+GitHub:     @<login> · <email> verified · personal repo <login>/ledger
 Repo:       <one line from repoOutcome: "created and pushed" | "linked: took N commits, replayed M" | "already in sync" | "re-pointed from the template to your repo">
 Done here:  <each entry of actions, one per line, verbatim>
 Template:   <skill updates taken | up to date>
@@ -561,14 +563,14 @@ from it; the newest version of a document cannot move alone (`code: newest-versi
 | `no-project` | nothing selected on this machine | the pick prompt: select or create, then continue |
 | `unknown-project` with `candidates` | the name matched several or none | ask the user which; show `candidates` |
 | `legacy.any: true` | runs/hand-offs/archive at the root from before projects | the migration question, then `project migrate` |
-| `codex-not-installed` | Codex CLI missing on this machine | Terminal: `npm install -g @openai/codex` |
-| `codex-not-signed-in` | Codex needs its ChatGPT login | Terminal: `codex login` |
+| `codex-not-installed` / `codex-not-signed-in` | Codex CLI missing on this machine, or not logged in | Terminal: `npm install -g @openai/codex`, then `codex login` |
 | `codex-timeout` | Codex hung | rerun `review`; if it repeats, paste findings from the Codex app |
 | sync: `Conflicts in …` | two machines edited the same non-generated file | tell the user which file; resolve by hand once |
 | sync: `indexes not rebuilt: reindex failed` | the pull worked, but rebuilding the indexes with the new code failed | run `reindex` to see the error; once it works, `sync` commits the result |
 | sync: `template-remote` | origin points at the shared template `rufait77/ledger`, not the user's own repo | show the three commands in the result's `fix` verbatim; nothing was pushed |
 | sync: `no remote: local only` | repo has no origin | run `/ledger setup`: it creates `<login>/ledger` and pushes; or `gh repo create ledger --private --template rufait77/ledger --clone` |
-| `gh auth status` failing | GitHub sign-in missing or expired | Terminal: `gh auth login` |
+| `gh auth status` failing, or check `company account verified` false | GitHub sign-in missing or expired; the sign-in cannot read its emails yet; or the account has no verified company email | Terminal: `gh auth login` with the company account; `gh auth refresh -h github.com -s user:email` when asked. A personal account can never hold a ledger |
+| sync: `account-not-verified` / `origin-owner-mismatch` | this machine has not verified the company account, or origin belongs to another account | run `/ledger setup`; nothing was pushed |
 | setup: `setup-restart-failed` | the pull updated the skill and the new version did not start | run `/ledger setup` again; the pull is done, so it starts on the new code |
 | `archive-locked` | another machine started archiving less than 6 h ago | wait, or `archive unlock` once the user confirms it is idle |
 | archive: `extractors.pdf/docx/xlsx/zip: false` | a library is not installed in the skill's scripts folder | run `/ledger setup`; meanwhile subagents read PDF/Word/Excel files directly; zips wait |
@@ -595,5 +597,4 @@ from it; the newest version of a document cannot move alone (`code: newest-versi
   never triaged; it is a question until the user answers it in a run.
 - Don't run `git` directly, and don't ask for passwords, keys or tokens in the chat.
 - Don't stop more than twice per run (plus the project pick when nothing is selected).
-- Don't put the full research or transcript text into memory files. Memory is one fact
-  per file.
+- Don't put full research or transcript text into memory files: one fact per file.

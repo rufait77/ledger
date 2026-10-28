@@ -515,7 +515,7 @@ ${relatedLines}
 Related hand-offs (context only; an archive entry never supersedes a hand-off):
 ${handoffLines}
 
-TASK: read the document, write its digest for engineers, and file it by running EXACTLY this command with the header and body filled in:
+TASK: read the document, write its digest for engineers, and file it by running EXACTLY this command with the header and body filled in (if your shell has no heredoc, e.g. PowerShell on Windows, save the digest to a temporary file and pass --file <that path> instead):
 
 node "${script}" archive add --name "${e.name}" ${addFlag} <<'LEDGER_EOF'
 ---

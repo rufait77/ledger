@@ -13,7 +13,7 @@ reject the findings, and writes the final hand-off. Every decision in that hand-
 so the next spec is checked against it. Your data lives in a private GitHub repository of your
 own and follows you to every machine.
 
-Current version: **2.0**.
+Current version: **2.1**.
 
 ## What you get
 
@@ -117,6 +117,22 @@ memory/
 Generated files (`PROJECTS.md`, every `INDEX.md`, every `DECISIONS.md`) are rebuilt by the
 skill; don't edit them. Hand-offs are append-only: a change of mind is a new hand-off that
 supersedes the old one.
+
+## Teams
+
+Fork this repository as your team's private template and every member starts from it with
+`gh repo create ledger --private --template <org>/ledger --clone`; the skill takes updates from
+the template and refuses to push anything back to it. To make sure ledgers only live under
+company GitHub accounts, add a `.ledger-team` file to your template:
+
+```json
+{ "accountEmailMustMatch": ["example.com"] }
+```
+
+`/ledger setup` then verifies that the signed-in account has a verified email at such a domain
+before it creates or links a personal repo (it asks once for
+`gh auth refresh -h github.com -s user:email`, which lets it read the verified emails), and
+`sync` refuses any origin owned by another account.
 
 ## Updates
 

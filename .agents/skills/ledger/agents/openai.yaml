@@ -1,0 +1,6 @@
+interface:
+  display_name: "Ledger"
+  short_description: "Research in, reviewed hand-offs out, every decision indexed"
+  default_prompt: "Use $ledger to start a run, check what was decided about a topic, archive old documents, or search everything."
+policy:
+  allow_implicit_invocation: true
